@@ -5,12 +5,16 @@ classdef terminator < handle
     %   is to be terminated
 
     properties
+        status
         minimize
+        % Trivial conditions
         max_nit
         max_elapsed_time
         benchmark
         max_fun_eval
-        status
+        %KKT Conditions
+        kkt_params
+
     end
 
     methods
@@ -34,7 +38,7 @@ classdef terminator < handle
                 obj.minimize = kwargs.minimize;
             end
 
-            for prop_name = {'max_nit', 'max_elapsed_time', 'benchmark', 'max_fun_eval'}
+            for prop_name = {'max_nit', 'max_elapsed_time', 'benchmark', 'max_fun_eval', 'kkt_params'}
                 obj.(prop_name{1}) = terminator.field_from_name(prop_name{1}, kwargs);
             end
 
@@ -48,6 +52,7 @@ classdef terminator < handle
             %           2. elapsed_time [float]: Total elapsed time since start of iteration
             %           3. fun_value [float]: Function value at current iteration
             %           4. num_fun_eval [int]: Number of function evaluations that happened so far
+            %           5. gradient [float]: Size of lagrangian gradient at that point
             response = false;
 
             if obj.max_nit.is_active && isfield(kwargs, 'nit') && (kwargs.nit >= obj.max_nit.value)
@@ -68,6 +73,14 @@ classdef terminator < handle
             elseif obj.max_fun_eval.is_active && isfield(kwargs, 'num_fun_eval') && kwargs.num_fun_eval >= obj.max_fun_eval.value
                 response = true;
                 terminate_reason = "reached maximum number of function evaluations";
+
+            elseif obj.kkt_params.is_active && isfield(kwargs, 'kkt_params')
+
+                if obj.passes_kkt_conditions(kwargs.kkt_params)
+                    response = true;
+                    terminate_reason = "current point meets all kkt conditions to precision set by user";
+                end
+
             end
 
             if response
@@ -94,6 +107,57 @@ classdef terminator < handle
             end
 
             return
+        end
+
+    end
+
+    methods (Access = private)
+
+        function meets_all_conditions = passes_kkt_conditions(obj, current_kkt_params)
+            meets_all_conditions = true;
+            at_least_one_test = false;
+            % 1st conditon - Stationarity
+            if isfield(obj.kkt_params.value, 'gradient_benchmark')
+
+                if ~isfield(current_kkt_params, 'gradient')
+                    meets_all_conditions = false;
+                    return
+                end
+
+                if obj.kkt_params.value.gradient_benchmark < current_kkt_params.gradient
+                    meets_all_conditions = false;
+                    return
+                end
+
+                at_least_one_test = true;
+
+            end
+
+            % 2nd condition - Primal feasibility
+            if isfield(obj.kkt_params.value, 'max_sum_penalties')
+
+                if ~isfield(current_kkt_params, 'sum_penalties')
+                    meets_all_conditions = false;
+                    return
+                end
+
+                if obj.kkt_params.value.max_sum_penalties < current_kkt_params.sum_penalties
+                    meets_all_conditions = false;
+                    return
+                end
+
+                at_least_one_test = true;
+
+            end
+
+            %3rd condition - Dual feasibility
+            %4th condition - Complementary slackness
+
+            if ~at_least_one_test
+                meets_all_conditions = false;
+                return
+            end
+
         end
 
     end

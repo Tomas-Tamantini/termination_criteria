@@ -4,7 +4,9 @@ x0 = zeros(2, 1);
 
 % plot = fcontour(@plot_fun);
 
-terminator_kwargs = struct('max_nit', 1000, 'max_elapsed_time', 2);
+kkt_params = struct('gradient_benchmark', 10, 'max_sum_penalties', .0001);
+
+terminator_kwargs = struct('max_elapsed_time', 2, 'kkt_params', kkt_params);
 
 term = terminator(terminator_kwargs);
 

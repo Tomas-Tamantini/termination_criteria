@@ -25,7 +25,7 @@ function [min_x, min_fun] = lagrange(fun, x0, terminator)
         [~, constraints, fun_grad, jacob] = feval(fun, current_x);
         grad_points = fun_grad + jacob' * diag(lagrange_mult) * ones(size(constraints));
 
-        alpha_mult = 0.005; % This is a simple method, just for testing termination criteria, therefore, alpha is *not* optimized
+        alpha_mult = 0.005; % This is a simple method, just for testing termination criteria, therefore, alpha is NOT optimized
 
         current_x = current_x - alpha_mult * grad_points;
         lagrange_mult = lagrange_mult + alpha_mult * constraints;
@@ -36,7 +36,17 @@ function [min_x, min_fun] = lagrange(fun, x0, terminator)
         num_fun_eval = num_fun_eval + 2;
         elapsed_time = toc;
 
-        termination_kwargs = struct('nit', nit, 'elapsed_time', elapsed_time, 'fun_value', new_fun_val, 'num_fun_eval', num_fun_eval);
+        gradient_size = norm([grad_points; constraints]);
+        sum_penalties = sum(constraints(constraints > 0));
+        kkt_params = struct('gradient', gradient_size, 'sum_penalties', sum_penalties);
+
+        termination_kwargs = struct(...
+            'nit', nit, ...
+            'elapsed_time', elapsed_time, ...
+            'fun_value', new_fun_val, ...
+            'num_fun_eval', num_fun_eval, ...
+            'kkt_params', kkt_params ...
+            );
 
         if terminator.should_terminate(termination_kwargs)
             break
