@@ -36,10 +36,15 @@ function [min_x, min_fun] = lagrange(fun, x0, terminator)
         num_fun_eval = num_fun_eval + 2;
         elapsed_time = toc;
 
+        % KKT Conditions
         gradient_size = norm([grad_points; constraints]);
         sum_penalties = sum(constraints(constraints > 0));
-        kkt_params = struct('gradient', gradient_size, 'sum_penalties', sum_penalties);
+        dual_sum = -sum(lagrange_mult(lagrange_mult < 0));
+        slackness = lagrange_mult' * constraints;
 
+        kkt_params = struct('gradient', gradient_size, 'sum_penalties', sum_penalties, 'dual_sum', dual_sum, 'slackness', slackness);
+
+        % Check if can terminate
         termination_kwargs = struct(...
             'nit', nit, ...
             'elapsed_time', elapsed_time, ...
