@@ -8,10 +8,10 @@ classdef terminator < handle
         status
         minimize
         % Trivial conditions
-        max_nit
-        max_elapsed_time
-        benchmark
-        max_fun_eval
+        nit
+        elapsed_time
+        fun_val
+        num_eval
         %KKT Conditions
         kkt_params
 
@@ -24,10 +24,10 @@ classdef terminator < handle
             %   Initialize new terminator with keyword arguments, given as struct
             %   The struct fields are all optional. They are:
             %       1. minimize [bool]: Indicates whether it is a minimization problem (DEFAULT = true)
-            %       2. max_nit [int]: Maximum number of iterations
-            %       3. max_elapsed_time [float]: Maximum elapsed time allowed
-            %       4. benchmark [float]: Benchmark value, to terminate solver if function goes below it (or above it, if maximizing)
-            %       5. max_fun_eval [int]: Maximum number of function evaluations allowed
+            %       2. nit [int]: Maximum number of iterations
+            %       3. elapsed_time [float]: Maximum elapsed time allowed
+            %       4. fun_val [float]: Benchmark value, to terminate solver if function goes below it (or above it, if maximizing)
+            %       5. num_eval [int]: Maximum number of function evaluations allowed
             %       6. kkt_params [struct]: Structure containing the tolerance of KKT conditions. Each of the field in the struct
             %                               can also be passed as a field in the original struct, no need to be wrapped in this
             %                               substruct. These fields are:
@@ -39,18 +39,29 @@ classdef terminator < handle
             %       terminator_kwargs = struct('max_nit', 2, 'max_elapsed_time', 3, 'benchmark', 0.01);
             %       term = terminator(terminator_kwargs);
             %   The variable 'term' can now be used inside a solver
+
+            % TODO: Raise exception on unknown parameter
             obj.minimize = true;
 
             if isfield(kwargs, 'minimize')
                 obj.minimize = kwargs.minimize;
             end
 
-            for prop_name = {'max_nit', 'max_elapsed_time', 'benchmark', 'max_fun_eval', 'kkt_params'}
-                obj.(prop_name{1}) = terminator.field_from_name(prop_name{1}, kwargs);
+            props = properties(obj);
+
+            for prop_index = 1:length(props)
+                prop_name = props{prop_index};
+
+                if prop_name == "status" || prop_name == "minimize"
+                    continue
+                end
+
+                obj.(prop_name) = terminator.field_from_name(prop_name, kwargs);
+
             end
 
             % Check if user passed KKT conditions not wrapped inside their own struct
-            for prop_name = {'gradient_benchmark', 'max_sum_penalties', 'max_dual_sum', 'max_slackness'}
+            for prop_name = {'gradient', 'max_sum_penalties', 'max_dual_sum', 'max_slackness'}
 
                 if isfield(kwargs, prop_name{1})
 
@@ -77,22 +88,22 @@ classdef terminator < handle
             %           5. gradient [float]: Size of lagrangian gradient at that point
             response = false;
 
-            if obj.max_nit.is_active && isfield(kwargs, 'nit') && (kwargs.nit >= obj.max_nit.value)
+            if obj.nit.is_active && isfield(kwargs, 'nit') && (kwargs.nit >= obj.nit.value)
                 response = true;
                 terminate_reason = "reached maximum number of iterations";
 
-            elseif obj.max_elapsed_time.is_active && isfield(kwargs, 'elapsed_time') && kwargs.elapsed_time >= obj.max_elapsed_time.value
+            elseif obj.elapsed_time.is_active && isfield(kwargs, 'elapsed_time') && kwargs.elapsed_time >= obj.elapsed_time.value
                 response = true;
                 terminate_reason = "reached maximum allowed ellapsed time";
 
-            elseif obj.benchmark.is_active && isfield(kwargs, 'fun_value')
+            elseif obj.fun_val.is_active && isfield(kwargs, 'fun_val')
 
-                if (obj.minimize && (kwargs.fun_value <= obj.benchmark.value)) || (~obj.minimize && (kwargs.fun_value >= obj.benchmark.value))
+                if (obj.minimize && (kwargs.fun_val <= obj.fun_val.value)) || (~obj.minimize && (kwargs.fun_val >= obj.fun_val.value))
                     response = true;
-                    terminate_reason = "reached benchmark value";
+                    terminate_reason = "reached benchmark function value";
                 end
 
-            elseif obj.max_fun_eval.is_active && isfield(kwargs, 'num_fun_eval') && kwargs.num_fun_eval >= obj.max_fun_eval.value
+            elseif obj.num_eval.is_active && isfield(kwargs, 'num_eval') && kwargs.num_eval >= obj.num_eval.value
                 response = true;
                 terminate_reason = "reached maximum number of function evaluations";
 
@@ -139,14 +150,14 @@ classdef terminator < handle
             meets_all_conditions = true;
             at_least_one_test = false;
             % 1st conditon - Stationarity
-            if isfield(obj.kkt_params.value, 'gradient_benchmark')
+            if isfield(obj.kkt_params.value, 'gradient')
 
                 if ~isfield(current_kkt_params, 'gradient')
                     meets_all_conditions = false;
                     return
                 end
 
-                if obj.kkt_params.value.gradient_benchmark < current_kkt_params.gradient
+                if obj.kkt_params.value.gradient < current_kkt_params.gradient
                     meets_all_conditions = false;
                     return
                 end
@@ -156,14 +167,14 @@ classdef terminator < handle
             end
 
             % 2nd condition - Primal feasibility
-            if isfield(obj.kkt_params.value, 'max_sum_penalties')
+            if isfield(obj.kkt_params.value, 'primal_feas')
 
-                if ~isfield(current_kkt_params, 'sum_penalties')
+                if ~isfield(current_kkt_params, 'primal_feas')
                     meets_all_conditions = false;
                     return
                 end
 
-                if obj.kkt_params.value.max_sum_penalties < current_kkt_params.sum_penalties
+                if obj.kkt_params.value.primal_feas < current_kkt_params.primal_feas
                     meets_all_conditions = false;
                     return
                 end
@@ -173,14 +184,14 @@ classdef terminator < handle
             end
 
             %3rd condition - Dual feasibility
-            if isfield(obj.kkt_params.value, 'max_dual_sum')
+            if isfield(obj.kkt_params.value, 'dual_feas')
 
-                if ~isfield(current_kkt_params, 'dual_sum')
+                if ~isfield(current_kkt_params, 'dual_feas')
                     meets_all_conditions = false;
                     return
                 end
 
-                if obj.kkt_params.value.max_dual_sum < current_kkt_params.dual_sum
+                if obj.kkt_params.value.dual_feas < current_kkt_params.dual_feas
                     meets_all_conditions = false;
                     return
                 end
@@ -190,14 +201,14 @@ classdef terminator < handle
             end
 
             %4th condition - Complementary slackness
-            if isfield(obj.kkt_params.value, 'max_slackness')
+            if isfield(obj.kkt_params.value, 'slackness')
 
                 if ~isfield(current_kkt_params, 'slackness')
                     meets_all_conditions = false;
                     return
                 end
 
-                if obj.kkt_params.value.max_slackness < current_kkt_params.slackness
+                if obj.kkt_params.value.slackness < current_kkt_params.slackness
                     meets_all_conditions = false;
                     return
                 end
